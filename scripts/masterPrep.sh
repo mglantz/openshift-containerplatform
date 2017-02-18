@@ -35,6 +35,10 @@ subscription-manager repos \
     --enable="rhel-7-server-rpms" \
     --enable="rhel-7-server-extras-rpms" \
     --enable="rhel-7-server-ose-3.4-rpms"
+    
+# Installation of prereqs
+echo $(date) " - Installing prereqs"
+yum install wget git net-tools bind-utils iptables-services bridge-utils bash-completion
 
 # Install and enable Cockpit
 echo $(date) " - Installing and enabling Cockpit"
