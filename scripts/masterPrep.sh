@@ -38,7 +38,7 @@ subscription-manager repos \
     
 # Installation of prereqs
 echo $(date) " - Installing prereqs"
-yum install wget git net-tools bind-utils iptables-services bridge-utils bash-completion
+yum -y install wget git net-tools bind-utils iptables-services bridge-utils bash-completion
 
 # Install and enable Cockpit
 echo $(date) " - Installing and enabling Cockpit"
