@@ -187,7 +187,7 @@ osm_use_cockpit=true
 os_sdn_network_plugin_name='redhat/openshift-ovs-multitenant'
 
 openshift_master_cluster_method=native
-openshift_master_cluster_hostname=$BASTION
+openshift_master_cluster_hostname=$MASTERPUBLICIPHOSTNAME
 openshift_master_cluster_public_hostname=$MASTERPUBLICIPHOSTNAME
 #openshift_master_cluster_public_vip=$MASTERPUBLICIPADDRESS
 
