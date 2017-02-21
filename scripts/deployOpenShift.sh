@@ -171,7 +171,6 @@ masters
 nodes
 etcd
 nfs
-lb
 
 # Set variables common for all OSEv3 hosts
 [OSEv3:vars]
@@ -189,7 +188,6 @@ os_sdn_network_plugin_name='redhat/openshift-ovs-multitenant'
 openshift_master_cluster_method=native
 openshift_master_cluster_hostname=$MASTERPUBLICIPHOSTNAME
 openshift_master_cluster_public_hostname=$MASTERPUBLICIPHOSTNAME
-#openshift_master_cluster_public_vip=$MASTERPUBLICIPADDRESS
 
 # Enable HTPasswdPasswordIdentityProvider
 openshift_master_identity_providers=[{'name': 'htpasswd_auth', 'login': 'true', 'challenge': 'true', 'kind': 'HTPasswdPasswordIdentityProvider', 'filename': '/etc/origin/master/htpasswd'}]
@@ -234,9 +232,6 @@ $MASTER-[0:${MASTERLOOP}].$DOMAIN
 
 [nfs]
 $MASTER-0.$DOMAIN
-
-[lb]
-$BASTION
 
 # host group for nodes
 [nodes]
