@@ -278,3 +278,4 @@ echo $(date) "- Assigning password for root, which is used to login to Cockpit"
 runuser -l $SUDOUSER -c "ansible-playbook ~/postinstall3.yml"
 
 echo $(date) " - Script complete"
+ 
