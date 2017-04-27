@@ -8,7 +8,9 @@ This template deploys OpenShift Container Platform with basic username / passwor
 |Master Load Balancer	|2 probes and 2 rules for TCP 8443 and TCP 9090 <br/> NAT rules for SSH on Ports 2200-220X                                           |
 |Infra Load Balancer	|3 probes and 3 rules for TCP 80, TCP 443 and TCP 9090 									                                             |
 |Public IP Addresses	|Bastion Public IP for Bastion Node<br />OpenShift Master public IP attached Master Load Balancer<br />OpenShift Router public IP attached to Infra Load Balancer            |
-|Storage Accounts   	|1 Storage Account for Master, and Bastion VMs<br />1 Storage Account for Infra VMs<br />2 Storage Accounts for Node VMs<br />1 Storage Account for Private Docker Registry  |
+|Storage Accounts   	|1 Storage Accounts for Masters <br />1 Storage Accounts for Infra VMs and Bastion VM<br />2 Storage Accounts for Node VMs<br />1 Storage Account for Private Docker Registry<br />2 Storage Accounts for Persistent Volumes  |
+|Network Security Groups|1 Network Security Group Master VMs<br />1 Network Security Group for Infra VMs<br />1 Network Security Group for Node VMs<br />1 Network Security Group for Bastion VM  |
+|Availability Sets      |1 Availability Set for Master VMs<br />1 Availability Set for Infra VMs<br />1 Availability Set for Node VMs  |
 |Virtual Machines   	|1 Bastion Node - Used to Run Ansible Playbook for OpenShift deployment<br />1, 2, or 3 Masters. First Master is used to run a NFS server to provide persistent storage.<br />1, 2, or 3 Infra nodes<br />User-defined number of nodes (1 to 30)<br />All VMs include a single attached data disk for Docker thin pool logical volume|
 
 ![Cluster Diagram](images/openshiftdiagram.jpg)
@@ -41,19 +43,94 @@ You will need to create a Key Vault to store your SSH Private Key that will then
   d.  Create Secret: `Set-AzureKeyVaultSecret -Name 'SecretName' -SecretValue $securesecret -VaultName 'KeyVaultName'`<br/>
   e.  Enable for Template Deployment: `Set-AzureRMKeyVaultAccessPolicy -VaultName 'KeyVaultName' -ResourceGroupName 'ResourceGroupName' -EnabledForTemplateDeployment`<br/>
 
-2. **Create Key Vault using Azure CLI**<br/>
-  a.  Create new Resource Group: azure group create \<name\> \<location\> <br/>
-         Ex: `azure group create ResourceGroupName 'East US'` <br/>
+2. **Create Key Vault using Azure CLI 1.0**<br/>
+  a.  Create new Resource Group: azure group create \<name\> \<location\><br/>
+         Ex: `azure group create ResourceGroupName 'East US'`<br/>
   b.  Create Key Vault: azure keyvault create -u \<vault-name\> -g \<resource-group\> -l \<location\><br/>
          Ex: `azure keyvault create -u KeyVaultName -g ResourceGroupName -l 'East US'`<br/>
   c.  Create Secret: azure keyvault secret set -u \<vault-name\> -s \<secret-name\> --file \<private-key-file-name\><br/>
-         Ex: `azure keyvault secret set -u KeyVaultName -s SecretName --file ~/.ssh/id_rsa` <br/>
-  d.  Enable the Keyvvault for Template Deployment: azure keyvault set-policy -u \<vault-name\> --enabled-for-template-deployment true <br/>
-         Ex: `azure keyvault set-policy -u KeyVaultName --enabled-for-template-deployment true` <br/>
+         Ex: `azure keyvault secret set -u KeyVaultName -s SecretName --file ~/.ssh/id_rsa`<br/>
+  d.  Enable the Keyvvault for Template Deployment: azure keyvault set-policy -u \<vault-name\> --enabled-for-template-deployment true<br/>
+         Ex: `azure keyvault set-policy -u KeyVaultName --enabled-for-template-deployment true`<br/>
+
+3. **Create Key Vault using Azure CLI 2.0**<br/>
+  a.  Create new Resource Group: az group create -n \<name\> -l \<location\><br/>
+         Ex: `az group create -n ResourceGroupName -l 'East US'`<br/>
+  b.  Create Key Vault: az keyvault create -n \<vault-name\> -g \<resource-group\> -l \<location\> --enabled-for-template-deployment true<br/>
+         Ex: `az keyvault create -n KeyVaultName -g ResourceGroupName -l 'East US' --enabled-for-template-deployment true`<br/>
+  c.  Create Secret: az keyvault secret set --vault-name \<vault-name\> -n \<secret-name\> --file \<private-key-file-name\><br/>
+         Ex: `az keyvault secret set --vault-name KeyVaultName -n SecretName --file ~/.ssh/id_rsa`<br/>
+
+### Generate Azure Active Directory (AAD) Service Principal
+
+To configure Azure as the Cloud Provider for OpenShift Container Platform, you will need to create an Azure Active Directory Service Principal.  The easiest way to perform this task is via the Azure CLI.  Below are the steps for doing this.
+
+You will want to create the Resource Group that you will ultimately deploy the OpenShift cluster to prior to completing the following steps.  If you don't, then wait until you initiate the deployment of the cluster before completing **Azure CLI 1.0 Step 2**. If using **Azure CLI 2.0**, complete step 2 to create the Service Principal prior to deploying the cluster and then assign permissions based on **Azure CLI 1.0 Step 2**.
+ 
+**Azure CLI 1.0**
+
+1. **Create Service Principal**<br/>
+  a.  azure ad sp create -n \<friendly name\> -p \<password\> --home-page \<URL\> --identifier-uris \<URL\><br/>
+      Ex: `azure ad sp create -n openshiftcloudprovider -p Pass@word1 --home-page http://myhomepage --identifier-uris http://myhomepage`
+
+The entries for --home-page and --identifier-uris is not important for this use case so they do not have to be valid links.
+You will get an output similar to this
+
+```
+info:    Executing command ad sp create
++ Creating application openshift demo cloud provider
++ Creating service principal for application 198c4803-1236-4c3f-ad90-46e5f3b4cd2a
+data:    Object Id:               00419334-174b-41e8-9b83-9b5011d8d352
+data:    Display Name:            openshiftcloudprovider
+data:    Service Principal Names:
+data:                             198c4803-1236-4c3f-ad90-46e5f3b4cd2a
+data:                             http://myhomepage
+info:    ad sp create command OK
+```
+Save the Object Id and the GUID in the Service Principal Names section.  This GUID is the Application ID / Client ID (aadClientId parameter).  The the password you entered as part of the CLI command is the input the aadClientSecret paramter.
+
+2. **Assign permissions to Service Principal for specific Resource Group**<br/>
+  a.  Sign into the Azure Portal<br/>
+  b.  Select the Resource Group you want to assign permissions to<br/>
+  c.  Select Access control (IAM) from middle pane<br/>
+  d.  Click Add on right pane<br/>
+  e.  For Role, Select Contributor<br/>
+  f.  In Select field, type the name of your Service Principal to find it<br/>
+  g.  Click the Service Principal from the list and hit Save<br/>
+
+![IAM ScreenShot1](images/openshiftiambcd.jpg)
+
+![IAM ScreenShot2](images/openshiftiamefg.jpg)
+  
+**Azure CLI 2.0**
+
+1. **Create Service Principal and assign permissions to Resource Group**<br/>
+  a.  az ad sp create-for-rbac -n \<friendly name\> --password \<password\> --role contributor --scopes /subscriptions/\<subscription_id\>/resourceGroups/\<Resource Group Name\><br/>
+      Ex: `az ad sp create-for-rbac -n openshiftcloudprovider --password Pass@word1 --role contributor --scopes /subscriptions/555a123b-1234-5ccc-defgh-6789abcdef01/resourceGroups/00000test`<br/>
+
+2. **Create Service Principal without assigning permissions to Resource Group**<br/>
+  a.  az ad sp create-for-rbac -n \<friendly name\> --password \<password\> --role contributor --skip-assignment<br/>
+      Ex: `az ad sp create-for-rbac -n openshiftcloudprovider --password Pass@word1 --role contributor --skip-assignment`<br/>
+
+You will get an output similar to:
+
+```javascript
+{
+  "appId": "2c8c6a58-44ac-452e-95d8-a790f6ade583",
+  "displayName": "openshiftcloudprovider",
+  "name": "http://openshiftcloudprovider",
+  "password": "Pass@word1",
+  "tenant": "12a345bc-1234-dddd-12ab-34cdef56ab78"
+}
+```
+
+The appId is used for the aadClientId parameter.
+
+To assign permissions, please follow the instructions from Azure CLI 1.0 Step 2 above.
 
 ### Red Hat Subscription Access
 
-For security reasons, the method for registering the RHEL system has been changed to allow the use of an Organization ID and Activation Key as well as a Username and Password. Please know that it is more secure to use the Organizatoin ID and Activation Key.
+For security reasons, the method for registering the RHEL system has been changed to allow the use of an Organization ID and Activation Key as well as a Username and Password. Please know that it is more secure to use the Organization ID and Activation Key.
 
 You can determine your Organization ID by running ```subscription-manager identity``` on a registered machine.  To create or find your Activation Key, please go here: https://access.redhat.com/management/activation_keys.
 
@@ -87,6 +164,8 @@ You will also need to get the Pool ID that contains your entitlements for OpenSh
 16. keyVaultResourceGroup: The name of the Resource Group that contains the Key Vault
 17. keyVaultName: The name of the Key Vault you created
 18. keyVaultSecret: The Secret Name you used when creating the Secret (that contains the Private Key)
+18. aadClientId: Azure Active Directory Client ID also known as Application ID for Service Principal
+18. aadClientSecret: Azure Active Directory Client Secret for Service Principal
 19. defaultSubDomainType: This will either be xipio (if you don't have your own domain) or custom if you have your own domain that you would like to use for routing
 20. defaultSubDomain: The wildcard DNS name you would like to use for routing if you selected custom above.  If you selected xipio above, you must still enter something here but it will not be used
 
@@ -100,13 +179,31 @@ Deploy to Azure using Azure Portal:
 
 Once you have collected all of the prerequisites for the template, you can deploy the template by clicking Deploy to Azure or populating the **azuredeploy.parameters.json** file and executing Resource Manager deployment commands with PowerShell or the Azure CLI.
 
+**Azure CLI 1.0**
+
+1. Create Resource Group: azure group create \<name\> \<location\><br />
+Ex: `azure group create openshift-cluster westus`
+2. Create Resource Group Deployment: azure group deployment create --name \<deployment name\> --template-file \<template_file\> -e \<parameters_file\> --resource-group \<resource group name\> --nowait<br />
+Ex: `azure group deployment create --name ocpdeployment --template-file azuredeploy.json -e azuredeploy.parameters.json --resource-group openshift-cluster --nowait`
+
+**Azure CLI 2.0**
+
+1. Create Resource Group: az group create -n \<name\> -l \<location\><br />
+Ex: `az group create -n openshift-cluster -l westus`
+2. Create Resource Group Deployment: az group deployment create --name \<deployment name\> --template-file \<template_file\> --parameters @\<parameters_file\> --resource-group \<resource group name\> --nowait<br />
+Ex: `azure group deployment create --name ocpdeployment --template-file azuredeploy.json --parameters @azuredeploy.parameters.json --resource-group openshift-cluster --no-wait`
+
+
 ### NOTE
 
 The OpenShift Ansible playbook does take a while to run when using VMs backed by Standard Storage. VMs backed by Premium Storage are faster. If you want Premium Storage, select a DS or GS series VM.
 <hr />
+
+### It is VERY important that you reboot all the nodes in the cluster (Masters, Infras and Nodes) upon a successfull cluster deployment before you login and start using the OpenShift Cluster!
+
 Be sure to follow the OpenShift instructions to create the necessary DNS entry for the OpenShift Router for access to applications. <br />
 
-Currently there is a hickup in the deployment of metrics and logging that will cause the deployment to take a little longer than normal.  When you look at the stdout files on the Bastion host, you will see that the installation had numerous retries for certain playbook tasks.  This is normal.
+Currently there is a hiccup in the deployment of metrics and logging that will cause the deployment to take a little longer than normal.  When you look at the stdout files on the Bastion host, you will see that the installation had numerous retries for certain playbook tasks.  This is normal.
 
 ### TROUBLESHOOTING
 
@@ -124,7 +221,7 @@ You should see a folder named '0' and '1'.  In each of these folders, you will s
 
 ### Metrics and logging
 
-To display metrics and logs, you need to logon to OpenShift ( https://publicDNSname:8443 ) go into the logging project, click on the Kubana route and accept the SSL exception in your brower, then do the same with the Hawkster metrics route in the openshift-infra project.
+To display metrics and logs, you need to logon to OpenShift ( https://publicDNSname:8443 ) go into the logging project, click on the Kubana route and accept the SSL exception in your browser, then do the same with the Hawkster metrics route in the openshift-infra project.
 
 ### Creation of additional users
 

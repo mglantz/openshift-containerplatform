@@ -80,6 +80,12 @@
 		"keyVaultSecret": {
 			"value": "changeme"
 		},
+		"aadClientId": {
+			"value": "changeme"
+		},
+		"aadClientSecret": {
+			"value": "changeme"
+		},
 		"defaultSubDomainType": {
 			"value": "xipio"
 		},
